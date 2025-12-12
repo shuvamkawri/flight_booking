@@ -14,88 +14,7 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  late final SearchProvider _searchProvider;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchProvider = Provider.of<SearchProvider>(context, listen: false);
-  }
-
-  Future<void> _searchFlights() async {
-    try {
-      // Validate inputs
-      if (_searchProvider.from.isEmpty || _searchProvider.to.isEmpty) {
-        _showErrorDialog('Please select both departure and arrival airports');
-        return;
-      }
-
-      if (_searchProvider.from == _searchProvider.to) {
-        _showErrorDialog('Departure and arrival airports cannot be the same');
-        return;
-      }
-
-      final flightProvider = Provider.of<FlightProvider>(context, listen: false);
-
-      // Show loading indicator - assign to variable to avoid "void" error
-      final loadingDialog = showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      // Search flights
-      // Remove the 'success' variable if searchFlights returns void
-      // If searchFlights returns Future<bool>, keep it
-      await flightProvider.searchFlights(
-        from: _searchProvider.from,
-        to: _searchProvider.to,
-        departureDate: _searchProvider.departureDate,
-        passengers: _searchProvider.passengers,
-        sortBy: _searchProvider.sortBy,
-        filters: _searchProvider.filters,
-      );
-
-      // Dismiss loading indicator
-      if (mounted) Navigator.of(context).pop();
-
-      // Check if flights were found - assuming flightProvider has a flights list
-      // If searchFlights returns bool, use that. Otherwise check flights list
-      if (flightProvider.flights.isNotEmpty && mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const FlightListScreen(),
-          ),
-        );
-      } else if (mounted) {
-        _showErrorDialog('No flights found for the selected criteria');
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop(); // Dismiss loading indicator
-        _showErrorDialog('An error occurred: $e');
-      }
-    }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +40,7 @@ class _SearchScreenState extends State<SearchScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Consumer<SearchProvider>(
-                builder: (context, provider, child) {
+                builder: (context, searchProvider, child) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -186,8 +105,8 @@ class _SearchScreenState extends State<SearchScreen> {
                                         ),
                                         const SizedBox(height: 3),
                                         Text(
-                                          provider.from.isNotEmpty
-                                              ? "${provider.from} (${provider.fromCity})"
+                                          searchProvider.from.isNotEmpty
+                                              ? "${searchProvider.from} (${searchProvider.fromCity})"
                                               : "Select airport",
                                           style: const TextStyle(
                                             fontSize: 18,
@@ -197,8 +116,13 @@ class _SearchScreenState extends State<SearchScreen> {
                                       ],
                                     ),
                                   ),
-                                  const Icon(Icons.swap_vert,
-                                      color: Colors.grey, size: 22),
+                                  GestureDetector(
+                                    onTap: () {
+                                      searchProvider.swapAirports();
+                                    },
+                                    child: const Icon(Icons.swap_vert,
+                                        color: Colors.grey, size: 22),
+                                  ),
                                 ],
                               ),
                             ),
@@ -228,8 +152,8 @@ class _SearchScreenState extends State<SearchScreen> {
                                         ),
                                         const SizedBox(height: 3),
                                         Text(
-                                          provider.to.isNotEmpty
-                                              ? "${provider.to} (${provider.toCity})"
+                                          searchProvider.to.isNotEmpty
+                                              ? "${searchProvider.to} (${searchProvider.toCity})"
                                               : "Select airport",
                                           style: const TextStyle(
                                             fontSize: 18,
@@ -272,7 +196,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                           const SizedBox(height: 4),
                                           Text(
                                             DateFormat("EEE, d MMM")
-                                                .format(provider.departureDate),
+                                                .format(searchProvider.departureDate),
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
@@ -305,7 +229,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            "${provider.passengers} ${provider.passengers == 1 ? 'person' : 'people'}",
+                                            "${searchProvider.passengers} ${searchProvider.passengers == 1 ? 'person' : 'people'}",
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
@@ -326,7 +250,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               width: double.infinity,
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: _searchFlights,
+                                onPressed: _isLoading ? null : () => _searchFlights(context),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.black,
                                   shape: RoundedRectangleBorder(
@@ -334,7 +258,16 @@ class _SearchScreenState extends State<SearchScreen> {
                                   ),
                                   elevation: 0,
                                 ),
-                                child: const Text(
+                                child: _isLoading
+                                    ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                                    : const Text(
                                   "Search flights",
                                   style: TextStyle(
                                     fontSize: 16,
@@ -384,19 +317,91 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  Future<void> _searchFlights(BuildContext context) async {
+    try {
+      final searchProvider = Provider.of<SearchProvider>(context, listen: false);
+
+      // Validate inputs
+      if (searchProvider.from.isEmpty || searchProvider.to.isEmpty) {
+        _showErrorDialog(context, 'Please select both departure and arrival airports');
+        return;
+      }
+
+      if (searchProvider.from == searchProvider.to) {
+        _showErrorDialog(context, 'Departure and arrival airports cannot be the same');
+        return;
+      }
+
+      final flightProvider = Provider.of<FlightProvider>(context, listen: false);
+
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Search flights
+      await flightProvider.searchFlights(
+        from: searchProvider.from,
+        to: searchProvider.to,
+        departureDate: searchProvider.departureDate,
+        passengers: searchProvider.passengers,
+        sortBy: searchProvider.sortBy,
+        filters: searchProvider.filters,
+      );
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Check if flights were found
+      if (flightProvider.flights.isNotEmpty && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const FlightListScreen(),
+          ),
+        );
+      } else if (mounted) {
+        _showErrorDialog(context, 'No flights found for the selected criteria');
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      _showErrorDialog(context, 'An error occurred: $e');
+    }
+  }
+
+  void _showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _selectDate(BuildContext context) async {
+    final searchProvider = Provider.of<SearchProvider>(context, listen: false);
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _searchProvider.departureDate,
+      initialDate: searchProvider.departureDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (picked != null && picked != _searchProvider.departureDate) {
-      _searchProvider.setDepartureDate(picked);
+    if (picked != null && picked != searchProvider.departureDate) {
+      searchProvider.setDepartureDate(picked);
     }
   }
 
   void _selectPassengers(BuildContext context) {
+    final searchProvider = Provider.of<SearchProvider>(context, listen: false);
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -417,14 +422,14 @@ class _SearchScreenState extends State<SearchScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
-                    onPressed: _searchProvider.passengers > 1
-                        ? () => _searchProvider.setPassengers(_searchProvider.passengers - 1)
+                    onPressed: searchProvider.passengers > 1
+                        ? () => searchProvider.setPassengers(searchProvider.passengers - 1)
                         : null,
                     icon: const Icon(Icons.remove_circle_outline),
                   ),
                   const SizedBox(width: 20),
                   Text(
-                    _searchProvider.passengers.toString(),
+                    searchProvider.passengers.toString(),
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -432,14 +437,14 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   const SizedBox(width: 20),
                   IconButton(
-                    onPressed: () => _searchProvider.setPassengers(_searchProvider.passengers + 1),
+                    onPressed: () => searchProvider.setPassengers(searchProvider.passengers + 1),
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               Text(
-                _searchProvider.passengers == 1 ? '1 person' : '${_searchProvider.passengers} people',
+                searchProvider.passengers == 1 ? '1 person' : '${searchProvider.passengers} people',
                 style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
@@ -461,8 +466,9 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _showAirportPicker(BuildContext context, {required bool isFrom}) {
-    // For testing, let's add some mock airports
     final airports = [
+      {'code': 'CGK', 'city': 'Jakarta'},
+      {'code': 'NRT', 'city': 'Tokyo'},
       {'code': 'JFK', 'city': 'New York'},
       {'code': 'LAX', 'city': 'Los Angeles'},
       {'code': 'ORD', 'city': 'Chicago'},
@@ -477,6 +483,8 @@ class _SearchScreenState extends State<SearchScreen> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
+        final searchProvider = Provider.of<SearchProvider>(context, listen: false);
+
         return Container(
           padding: const EdgeInsets.all(16),
           height: MediaQuery.of(context).size.height * 0.8,
@@ -499,11 +507,18 @@ class _SearchScreenState extends State<SearchScreen> {
                       leading: const Icon(Icons.flight, color: Colors.blue),
                       title: Text(airport['code']!),
                       subtitle: Text(airport['city']!),
+                      trailing: isFrom
+                          ? airport['code'] == searchProvider.from
+                          ? const Icon(Icons.check, color: Colors.green)
+                          : null
+                          : airport['code'] == searchProvider.to
+                          ? const Icon(Icons.check, color: Colors.green)
+                          : null,
                       onTap: () {
                         if (isFrom) {
-                          _searchProvider.setFrom(airport['code']!, airport['city']!);
+                          searchProvider.setFrom(airport['code']!, airport['city']!);
                         } else {
-                          _searchProvider.setTo(airport['code']!, airport['city']!);
+                          searchProvider.setTo(airport['code']!, airport['city']!);
                         }
                         Navigator.pop(context);
                       },
