@@ -43,6 +43,23 @@ A Flutter-based mobile application for searching and booking flights with a mode
 - Android Studio/VSCode with Flutter extensions
 - Android emulator or physical device
 
+⏱️ Development Time
+Approximate hours taken: 12-16 hours
+
+Breakdown:
+
+Project setup and architecture: 2 hours
+
+UI implementation: 4-5 hours
+
+API integration: 3 hours
+
+State management: 2 hours
+
+Testing and bug fixes: 2-3 hours
+
+Documentation: 1 hour
+
 ### Steps to Run
 
 1. **Clone the repository**
