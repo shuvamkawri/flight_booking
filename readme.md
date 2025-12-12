@@ -75,5 +75,5 @@ flutter build appbundle --release
 
 # APK Location: build/app/outputs/flutter-apk/app-release.apk
 # App Bundle: build/app/outputs/bundle/release/app-release.aab
-APK LINK 
-https://drive.google.com/file/d/1znMqUuidvjEApPXn-96mlJrF0MBV7OLG/view?usp=sharing
+APK LINK
+https://drive.google.com/file/d/1eaIInw51oRtYGoh7nFy2ogHKu971TjpD/view?usp=sharing
